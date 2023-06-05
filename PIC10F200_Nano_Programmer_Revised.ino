@@ -51,9 +51,55 @@ void fillProgramArray(void) {
 // Location: 00FFh contains the internal clock oscillator calibration value.
 void getCalibrationBits(void) {
   // Move to address 00FFh to read calibration bits
-  while() {
+  //while() {
+  //
+  //}
+}
 
+void incrementAddress(void) {
+  for(int i = 0 ; i < 6; i++) {
+    digitalWrite(ICSPCLK, HIGH);
+    delay(1);
+    digitalWrite(ICSPDAT, ((INCREMENT_COMMAND >> (2 + (5 - i))) & 0b00000001) ? HIGH : LOW);
+    delay(1);
+    digitalWrite(ICSPCLK, LOW);
+    delay(1);
   }
+}
+
+void readWord(void) {
+  for(int i = 0 ; i < 6; i++) {
+    digitalWrite(ICSPCLK, HIGH);
+    delay(250);
+    digitalWrite(ICSPDAT, ((READ_COMMAND >> (2 + (5 - i))) & 0b00000001) ? HIGH : LOW);
+    delay(250);
+    digitalWrite(ICSPCLK, LOW);
+    delay(500);
+  }
+
+  // Wait for the second rising edge
+  digitalWrite(ICSPCLK, HIGH);
+  delay(500);
+  digitalWrite(ICSPCLK, LOW);
+  delay(500);
+
+  // Change ICSPDAT to input
+  pinMode(ICSPDAT, INPUT);
+  digitalWrite(ICSPCLK, HIGH);
+  delay(500);
+
+  // Read 12 bits onto the serial monitor, ignore the remaining two MSbs
+  for(int i = 0 ; i < 12 ; i++) {
+    digitalWrite(ICSPCLK, LOW);
+    delay(250);
+    Serial.println(digitalRead(ICSPDAT));
+    delay(250);
+    digitalWrite(ICSPCLK, HIGH);
+    delay(500);
+  }
+
+  //Bring clock low
+  digitalWrite(ICSPCLK, LOW);
 }
 
 void setup() {
@@ -64,13 +110,22 @@ void setup() {
 
   pinMode(ICSPDAT, OUTPUT);
   pinMode(ICSPCLK, OUTPUT);
+
+  digitalWrite(ICSPDAT, LOW);
+  digitalWrite(ICSPCLK, LOW);
+  while(!Serial.available()) {
+  }
+
+  // Increment to OSCCAL calibration value in program memory
+  for(int i = 0 ; i < 256 ; i++) {
+    incrementAddress();
+  }
+
+  // Read data from current address
+  readWord();
 }
 
 void loop() {
-  digitalWrite(ICSPDAT, LOW);
-  digitalWrite(ICSPCLK, LOW);
-
-  //if(Serial.available() > 0) {
-  //  fillProgramArray();
-  //}
+  //digitalWrite(ICSPDAT, LOW);
+  //digitalWrite(ICSPCLK, LOW);
 }
