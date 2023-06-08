@@ -40,7 +40,7 @@ const byte BEGIN_COMMAND = 0b1000;       // Begin Programming
 const byte END_COMMAND = 0b1110;         // End Programming
 const byte BULK_ERASE_COMMAND = 0b1001;  // Bulk Erase Program Memory
 
-byte program[MEMSIZE];  // Array containing 384 bytes
+byte program[384];  // Array containing 384 bytes
 const uint16_t configurationWord = DEFAULT_CONFIG_WORD | CP_NOT | WDTE; // Set to: 111111101011. Meaning: GP3/MCLR functions as GP3, Code protection is off, Watchdog timer is disabled.
 uint16_t osccalPrimaryCalibrationBits; // Storage for calibration bits in program memory
 uint16_t osccalBackupCalibrationBits; // Storage for calibration bits in configuration memory
@@ -177,6 +177,21 @@ uint16_t readWord(void) {
 
   return wordBuffer;
 }
+
+void bulkErase(void) {
+  // Send read command
+  for(int i = 0 ; i < 6; i++) {
+    digitalWrite(ICSPCLK, HIGH);
+    delay(1);
+    digitalWrite(ICSPDAT, ((BULK_ERASE_COMMAND >> i) & 0b00000001) ? HIGH : LOW);
+    delay(1);
+    digitalWrite(ICSPCLK, LOW);
+    delay(1);
+  }
+
+  // Wait 10ms for the erase to finish
+  delay(10);
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////
 int getBit(byte * data, int queryBit) {
   int byteIndex = queryBit / 8;
@@ -237,10 +252,12 @@ void writeConfigurationWord(void) {
     Serial.println(configurationWord, BIN);
     Serial.print("Read: ");
     Serial.println(valueWritten, BIN);
+    return 1;
   } else {
     Serial.println("Done");
     Serial.print("Current configuration: ");
     Serial.println(valueWritten, BIN);
+    return 0;
   }
 }
 
@@ -249,11 +266,11 @@ int writeProgram(byte programArr[MEMSIZE]) {
 
   uint16_t wordBuffer;
   int bitIndex = 0;
-  Serial.print("Writing program to memory...");
+  Serial.print("Writing program to memory");
   for(int i = 0 ; i < MEMSIZE - 1 ; i++) {
     wordBuffer = 0; // Reset buffer
     for(int j = 0 ; j < 12 ; j++) {
-      wordBuffer |= getBit(programArr, bitIndex) << (11 - j);
+      wordBuffer |= (getBit(program, bitIndex) ? 0x1 : 0x0) << (11 - j);
       bitIndex ++;
     }
     loadWord(wordBuffer);
@@ -262,16 +279,22 @@ int writeProgram(byte programArr[MEMSIZE]) {
 
     uint16_t valueWritten = readWord();
     if(valueWritten != wordBuffer) {
-      Serial.println("Failed to write word: ");
-      // Add address with error
+      Serial.print("Failed to write word at address ");
+      Serial.print(i, HEX);
+      Serial.println(":");
       Serial.print("Provided: ");
       Serial.println(wordBuffer, BIN);
       Serial.print("Read: ");
       Serial.println(valueWritten, BIN);
       return 1;
     }
+
+    Serial.print(".");
+
+    incrementAddress();
   }
   Serial.println("Done");
+  return 0;
 }
 
 void setup() {
@@ -292,22 +315,29 @@ void setup() {
   while(!Serial.available()) {
   }
 
-  writeConfigurationWord();
+  memset(program, 0, 384);
+  // 1100 1101, 1111 0000, 0000 0010, 1100 0000, 1011 0000, 0000 0110, 0101 0100, 0110 0000 ← Sample program
+  program[0] = 0b11001101;
+  program[1] = 0b11110000;
+  program[2] = 0b00000010;
+  program[3] = 0b11000000;
+  program[4] = 0b10110000;
+  program[5] = 0b00000110;
+  program[6] = 0b01010100;
+  program[7] = 0b01100000;
 
-  /*
-  // Write a bunch of NOPs
-  writeProgram(program); 
-  
-  // Increment twice to rollover to 000
-  incrementAddress();
-  incrementAddress();
+  /*if(!writeProgram(program)) {
+    for(int i = 0 ; i < 257 ; i++) {
+      incrementAddress();
+    }
 
-  // Dump memory
-  for(int i = 0 ; i < 256 ; i++) {
-    readWord();
-    incrementAddress();
-  }
-  */
+    for(int i = 0 ; i < 256 ; i++) {
+      Serial.println(readWord(), HEX);
+      incrementAddress();
+    }
+
+    Serial.println("Done dumping memory.");
+  }*/
 }
 
 void loop() {
